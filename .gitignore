@@ -1,0 +1,36 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+
+# Sensitive/private data
+*.csv
+*.json
+*.xlsx
+*.xls
+
+# Logs
+*.log
+
+# API keys / credentials
+*.key
+*.pem
+
+# OS files
+.DS_Store
+Thumbs.db
