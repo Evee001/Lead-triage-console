@@ -2,7 +2,7 @@
 
 Upload a messy lead CSV and get a ranked, de-duplicated call list in seconds: who to **contact now**, who to **nurture**, and who to **disqualify**.
 
-**Live demo:** _coming soon_ · click **Load sample data**, then **Run triage**.
+**Live demo:** https://lead-triage-console-tau.vercel.app · click **Load sample data**, then **Run triage**. (The public demo runs in keyword-rules mode; add an `ANTHROPIC_API_KEY` to enable Claude intent scoring.)
 
 ## What it does
 

@@ -6,6 +6,7 @@ let leads = [];
 let sortState = { key: "score", dir: -1 };
 // Intent results are cached per lead+notes, so re-running with new weights costs no extra API calls.
 const intentCache = {};
+let aiAvailable = null; // set from /api/health on load
 const cacheKey = (l) => `${l.lead_id}\u0000${l.notes}`;
 
 
@@ -350,7 +351,25 @@ async function analyzeIntentBatch(batch) {
   return map;
 }
 
+async function checkAi() {
+  try {
+    const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
+    aiAvailable = !!h.ai;
+  } catch {
+    aiAvailable = false;
+  }
+  document.getElementById("modelBadge").textContent = aiAvailable
+    ? "engine: claude ready"
+    : "engine: rule-based (AI offline)";
+  return aiAvailable;
+}
+
 async function runIntentAnalysis(leads, onProgress) {
+  if (aiAvailable === null) await checkAi();
+  if (!aiAvailable) {
+    onProgress(1, "AI intent scoring is offline in this demo.");
+    return { intentMap: {}, okBatches: 0, totalBatches: 0, stopReason: "offline" };
+  }
   const BATCH_SIZE = 8;
   const intentMap = {};
   const batches = [];
@@ -434,6 +453,7 @@ function loadCsvText(text, label) {
 });
 
 document.getElementById("runBtn").onclick = runTriage;
+checkAi();
 
 async function runTriage() {
   const btn = document.getElementById("runBtn");
@@ -448,7 +468,9 @@ async function runTriage() {
   };
 
   const candidates = leads.filter((l) => !l.hard_dq && !intentCache[cacheKey(l)]);
-  runStatus.textContent = `analyzing intent for ${candidates.length} leads via Claude...`;
+  runStatus.textContent = aiAvailable === false
+    ? "scoring with keyword rules..."
+    : `analyzing intent for ${candidates.length} leads via Claude...`;
   runBar.style.width = "2%";
 
   const { intentMap, okBatches, totalBatches, stopReason } =
@@ -460,7 +482,9 @@ async function runTriage() {
     });
 
   document.getElementById("modelBadge").textContent =
-    totalBatches === 0
+    stopReason === "offline"
+      ? "engine: rule-based (AI offline)"
+      : totalBatches === 0
       ? Object.keys(intentCache).length ? "engine: claude (cached)" : "engine: rules only"
       : okBatches === totalBatches
         ? "engine: claude"
@@ -476,7 +500,10 @@ async function runTriage() {
     if (intentCache[cacheKey(l)]) fullMap[l.lead_id] = intentCache[cacheKey(l)];
   });
   computeCompositeScores(leads, weights, fullMap);
-  runStatus.textContent = `done — ${leads.length} leads scored`;
+  runStatus.textContent =
+    stopReason === "offline"
+      ? `done — ${leads.length} leads scored (intent from keyword rules; AI scoring is offline in this demo)`
+      : `done — ${leads.length} leads scored`;
   runBar.style.width = "100%";
   btn.disabled = false;
 
