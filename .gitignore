@@ -26,3 +26,6 @@ Thumbs.db
 .vscode/
 .vercel/
 node_modules/
+
+# Marketing assets (not part of the app)
+linkedin-assets/
