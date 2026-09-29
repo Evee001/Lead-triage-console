@@ -1,12 +1,9 @@
-# Environment variables
+# Secrets
 .env
 .env.*
 !.env.example
-
-.env
-.venv/
-__pycache__/
-*.pyc
+*.key
+*.pem
 
 # Python
 __pycache__/
@@ -14,23 +11,18 @@ __pycache__/
 .venv/
 venv/
 env/
+.pytest_cache/
 
-# Node
-node_modules/
-
-# Sensitive/private data
+# Private lead data
 *.csv
-*.json
 *.xlsx
 *.xls
 
-# Logs
+# Logs / OS / tooling
 *.log
-
-# API keys / credentials
-*.key
-*.pem
-
-# OS files
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+.vercel/
+node_modules/

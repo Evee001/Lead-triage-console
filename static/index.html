@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Upload a lead CSV, clean and de-duplicate it, and rank leads by fit, budget, authority and AI-read buyer intent." />
+    <title>Lead Triage Console</title>
+    <script src="/static/papaparse.min.js"></script>
+    <style>
+      :root {
+        --bg: #12161b;
+        --panel: #181d24;
+        --panel2: #1e242c;
+        --line: #2a313b;
+        --text: #e7eaee;
+        --muted: #8a94a3;
+        --dim: #5b6472;
+        --mono:
+          "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+          monospace;
+        --sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+        --hot: #3ddc84;
+        --hot-dim: #173322;
+        --warm: #f5a623;
+        --warm-dim: #332612;
+        --cold: #ff5c5c;
+        --cold-dim: #331414;
+        --accent: #5fa8ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+      }
+      .wrap {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 32px 24px 80px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 20px;
+        margin-bottom: 28px;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0 0 4px;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        font-family: var(--mono);
+      }
+      .badge {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--dim);
+        border: 1px solid var(--line);
+        padding: 3px 8px;
+        border-radius: 4px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .panel h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 14px;
+        font-weight: 600;
+      }
+
+      .drop {
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        padding: 36px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .drop:hover,
+      .drop.drag {
+        border-color: var(--accent);
+      }
+      .drop .big {
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      .drop .small {
+        font-size: 12px;
+        color: var(--dim);
+        font-family: var(--mono);
+      }
+      input[type="file"] {
+        display: none;
+      }
+      .rowbtns {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      button {
+        font-family: var(--sans);
+        font-size: 13px;
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button.primary {
+        background: var(--accent);
+        color: #0a1a2e;
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      button.primary:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      .weights {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+      .wctl label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .wctl .val {
+        font-family: var(--mono);
+        color: var(--text);
+        float: right;
+      }
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+
+      .status {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 14px;
+      }
+      .bar {
+        height: 4px;
+        background: var(--panel2);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 8px;
+      }
+      .bar > div {
+        height: 100%;
+        background: var(--accent);
+        width: 0%;
+        transition: width 0.2s;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .metric {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+      .metric .n {
+        font-family: var(--mono);
+        font-size: 22px;
+        font-weight: 600;
+      }
+      .metric .l {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .metric.hot .n {
+        color: var(--hot);
+      }
+      .metric.warm .n {
+        color: var(--warm);
+      }
+      .metric.cold .n {
+        color: var(--cold);
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar select,
+      .toolbar input[type="text"] {
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 7px 10px;
+        font-family: var(--sans);
+        font-size: 13px;
+      }
+      .toolbar input[type="text"] {
+        flex: 1;
+        min-width: 180px;
+      }
+      .spacer {
+        flex: 1;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      thead th {
+        text-align: left;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--dim);
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      thead th:hover {
+        color: var(--muted);
+      }
+      tbody tr {
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+      }
+      tbody tr:hover {
+        background: var(--panel2);
+      }
+      tbody td {
+        padding: 9px 10px;
+        vertical-align: middle;
+      }
+      .name {
+        font-weight: 500;
+      }
+      .company {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .tier {
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        display: inline-block;
+        font-weight: 600;
+      }
+      .tier.hot {
+        background: var(--hot-dim);
+        color: var(--hot);
+      }
+      .tier.warm {
+        background: var(--warm-dim);
+        color: var(--warm);
+      }
+      .tier.cold {
+        background: var(--cold-dim);
+        color: var(--cold);
+      }
+      .score {
+        font-family: var(--mono);
+        font-weight: 600;
+      }
+      .signal {
+        display: flex;
+        gap: 2px;
+        align-items: flex-end;
+        height: 16px;
+      }
+      .signal div {
+        width: 4px;
+        background: var(--line);
+        border-radius: 1px;
+      }
+      .dup {
+        font-size: 10px;
+        color: var(--warm);
+        border: 1px solid var(--warm);
+        border-radius: 3px;
+        padding: 0 4px;
+        margin-left: 6px;
+      }
+
+      .detail {
+        background: var(--panel2);
+      }
+      .detail td {
+        padding: 14px 20px;
+      }
+      .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        font-size: 13px;
+      }
+      .detail-grid .k {
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        margin-bottom: 3px;
+      }
+      .detail-grid .v {
+        margin-bottom: 10px;
+      }
+      .notes-box {
+        grid-column: 1/-1;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .reason-box {
+        grid-column: 1/-1;
+        background: var(--panel);
+        border-left: 2px solid var(--accent);
+        border-radius: 0 6px 6px 0;
+        padding: 10px 12px;
+        font-size: 13px;
+        margin-top: 8px;
+      }
+
+      .empty {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+      .footer-note {
+        font-size: 12px;
+        color: var(--dim);
+        margin-top: 24px;
+        line-height: 1.6;
+      }
+      a {
+        color: var(--accent);
+      }
+      .head-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .gh {
+        font-family: var(--mono);
+        font-size: 12px;
+        text-decoration: none;
+      }
+      .privacy {
+        font-size: 12px;
+        color: var(--dim);
+        margin-top: 10px;
+        font-family: var(--mono);
+      }
+      @media (max-width: 760px) {
+        .metrics { grid-template-columns: repeat(3, 1fr); }
+        .weights { grid-template-columns: repeat(2, 1fr); }
+        .detail-grid { grid-template-columns: 1fr; }
+        .panel table { display: block; overflow-x: auto; white-space: nowrap; }
+        header { flex-direction: column; align-items: flex-start; gap: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <h1>Lead triage console</h1>
+          <div class="sub">upload → clean → score → rank</div>
+        </div>
+        <div class="head-right">
+          <a class="gh" href="https://github.com/Evee001/Lead-triage-console" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <div class="badge" id="modelBadge">engine: rule-based</div>
+        </div>
+      </header>
+
+      <div class="panel" id="uploadPanel">
+        <h2>1. Load leads</h2>
+        <div class="drop" id="dropZone">
+          <div class="big">Drop a CSV here, or click to browse</div>
+          <div class="small">
+            expects columns like lead_id, created, name, email, company,
+            employees, website, title, source, monthly_budget, notes
+          </div>
+          <div class="rowbtns">
+            <button id="browseBtn">Choose file</button>
+            <button id="sampleBtn">Load sample data</button>
+          </div>
+          <input type="file" id="fileInput" accept=".csv" />
+        </div>
+        <div class="status" id="loadStatus"></div>
+        <div class="privacy">Your CSV is processed in your browser. Only lead IDs and notes are sent for AI intent scoring, and nothing is stored.</div>
+      </div>
+
+      <div class="panel" id="configPanel" style="display: none">
+        <h2>2. Scoring weights (must total 100)</h2>
+        <div class="weights">
+          <div class="wctl">
+            <label
+              >Firmographic (size)
+              <span class="val" id="wFirmoVal">20</span></label
+            >
+            <input type="range" id="wFirmo" min="0" max="100" value="20" />
+          </div>
+          <div class="wctl">
+            <label
+              >Financial (budget)
+              <span class="val" id="wBudgetVal">25</span></label
+            >
+            <input type="range" id="wBudget" min="0" max="100" value="25" />
+          </div>
+          <div class="wctl">
+            <label
+              >Authority (title)
+              <span class="val" id="wTitleVal">15</span></label
+            >
+            <input type="range" id="wTitle" min="0" max="100" value="15" />
+          </div>
+          <div class="wctl">
+            <label
+              >Intent (notes, LLM)
+              <span class="val" id="wIntentVal">40</span></label
+            >
+            <input type="range" id="wIntent" min="0" max="100" value="40" />
+          </div>
+        </div>
+        <div
+          class="rowbtns"
+          style="justify-content: flex-start; margin-top: 16px"
+        >
+          <button class="primary" id="runBtn">Run triage</button>
+          <span class="status" id="weightWarn"></span>
+        </div>
+        <div class="status" id="runStatus"></div>
+        <div class="bar"><div id="runBar"></div></div>
+      </div>
+
+      <div id="results" style="display: none">
+        <div class="metrics">
+          <div class="metric">
+            <div class="n" id="mTotal">0</div>
+            <div class="l">total leads</div>
+          </div>
+          <div class="metric hot">
+            <div class="n" id="mHot">0</div>
+            <div class="l">contact now</div>
+          </div>
+          <div class="metric warm">
+            <div class="n" id="mWarm">0</div>
+            <div class="l">nurture</div>
+          </div>
+          <div class="metric cold">
+            <div class="n" id="mCold">0</div>
+            <div class="l">disqualified / low fit</div>
+          </div>
+          <div class="metric">
+            <div class="n" id="mBudget">$0</div>
+            <div class="l">hot pipeline / mo</div>
+          </div>
+          <div class="metric">
+            <div class="n" id="mDup">0</div>
+            <div class="l">possible dupes</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="toolbar">
+            <select id="filterTier">
+              <option value="all">All tiers</option>
+              <option value="hot">Contact now</option>
+              <option value="warm">Nurture</option>
+              <option value="cold">Disqualified / low fit</option>
+            </select>
+            <input
+              type="text"
+              id="searchBox"
+              placeholder="Search name, company, email..."
+            />
+            <div class="spacer"></div>
+            <button id="downloadBtn">Download ranked CSV</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="score">Score</th>
+                <th data-sort="tier">Tier</th>
+                <th data-sort="name">Lead</th>
+                <th data-sort="company">Company</th>
+                <th data-sort="title">Title</th>
+                <th data-sort="employees">Size</th>
+                <th data-sort="budget">Budget/mo</th>
+                <th>Signal</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <div class="empty" id="emptyMsg" style="display: none">
+            No leads match this filter
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note" id="footerNote"></div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
